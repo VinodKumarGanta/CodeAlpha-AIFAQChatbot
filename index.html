@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI FAQ Assistant - Smart Support</title>
+    <meta name="description" content="A highly intelligent FAQ Chatbot for Account, Billing, Product, Support, Security, and Orders.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2Z" fill="url(#logo-grad)"/>
+                        <path d="M8 12H8.01M12 12H12.01M16 12H16.01" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <defs>
+                            <linearGradient id="logo-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#6366f1"/>
+                                <stop offset="1" stop-color="#a855f7"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h1>SmartAssistant <span>AI</span></h1>
+            </div>
+            <div class="status-indicator">
+                <span class="pulse"></span>
+                Online
+            </div>
+        </header>
+
+        <section class="chat-viewport" id="chat-viewport">
+            <div class="welcome-message">
+                <h2>How can I help you today?</h2>
+                <p>I'm trained on 50+ topics including Billing, Security, Orders, and more.</p>
+                <div class="suggested-chips">
+                    <button class="chip" onclick="suggestQuestion('How do I reset my password?')">Reset Password</button>
+                    <button class="chip" onclick="suggestQuestion('Is there a free trial?')">Free Trial</button>
+                    <button class="chip" onclick="suggestQuestion('How do I track my order?')">Track Order</button>
+                    <button class="chip" onclick="suggestQuestion('Is my data safe?')">Data Security</button>
+                </div>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages will appear here -->
+            </div>
+        </section>
+
+        <footer class="app-footer">
+            <form class="input-area" id="chat-form">
+                <input type="text" id="user-input" placeholder="Type your question here..." autocomplete="off">
+                <button type="submit" id="send-btn" aria-label="Send message">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </form>
+            <p class="disclaimer">Ask about accounts, billing, security and more.</p>
+        </footer>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
