@@ -255,14 +255,7 @@ const SMALL_TALK_DATABASE = [
         ],
         category: "Fun"
     },
-    {
-        // ── What time / date
-        triggers: ["what time is it", "what's the time", "current time", "what is the time", "tell me the time", "today's date", "what is today", "what is the date", "current date", "what day is it", "what year is it"],
-        responses: [
-            `The current date and time is: 📅 ${new Date().toLocaleString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.`
-        ],
-        category: "Time"
-    },
+
     {
         // ── Insults / Rude inputs — polite deflection
         triggers: ["you are stupid", "you're stupid", "you are dumb", "you're dumb", "you are useless", "you're useless", "you are bad", "you're bad", "you suck", "hate you", "shut up", "you are idiot", "you're an idiot", "worthless bot", "worst bot", "terrible bot", "bad bot"],
@@ -450,8 +443,15 @@ function suggestQuestion(q) {
 // ============================================================
 //  MAIN RESPONSE HANDLER
 // ============================================================
-function handleResponse(input) {
+// ============================================================
+//  MAIN RESPONSE HANDLER
+// ============================================================
+async function handleResponse(input) {
     const lower = input.toLowerCase().trim();
+
+    // ── Calendar, Clock & Weather Questions ───────────────
+    const matchedSpecial = await handleCalendarClockWeather(lower, input);
+    if (matchedSpecial) return;
 
     // ── Small Talk (greetings, farewells, jokes, identity…) ─
     const smallTalk = matchSmallTalk(lower);
@@ -489,6 +489,188 @@ function handleResponse(input) {
             "I'm not sure about that. Try rephrasing, or ask about: <em>science, math, history, geography, technology, sports, billing, account, security</em>…",
             "No Match", input);
     }
+}
+
+// ============================================================
+//  DYNAMIC CALENDAR, CLOCK, AND WEATHER ENGINE
+// ============================================================
+async function handleCalendarClockWeather(lower, input) {
+    // 1. Clock / Time Questions
+    if (/\b(time|clock|current time|time now|what time)\b/.test(lower)) {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        addBotMessage("Clock", `🕒 The current local time is **${timeString}**.`, "Exact Match", input);
+        return true;
+    }
+
+    // 2. Calendar / Date Questions
+    if (/\b(date|calendar|today's date|today date|current date|what date is it|what day is it today|which day is today|day of the week|what day of the week)\b/.test(lower)) {
+        const now = new Date();
+        const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const dateString = now.toLocaleDateString('en-IN', dateOptions);
+        const dayName = now.toLocaleDateString('en-IN', { weekday: 'long' });
+
+        let response = `📅 Today's date is **${dateString}** (it's a **${dayName}**).`;
+
+        if (lower.includes("day of the week") || lower.includes("which day") || lower.includes("what day is it")) {
+            response = `📅 Today is **${dayName}**.`;
+        }
+        addBotMessage("Calendar", response, "Exact Match", input);
+        return true;
+    }
+
+    // 3. Leap Year Check
+    if (lower.includes("leap year")) {
+        const match = lower.match(/\b(19|20)\d{2}\b/);
+        let year = match ? parseInt(match[0], 10) : new Date().getFullYear();
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        addBotMessage("Calendar", `📅 The year **${year}** ${isLeap ? "is" : "is not"} a leap year.`, "Exact Match", input);
+        return true;
+    }
+
+    // 4. Days until New Year / Days left
+    if (lower.includes("days left") || lower.includes("until new year") || lower.includes("days until new")) {
+        const now = new Date();
+        const nextYear = now.getFullYear() + 1;
+        const newYearDate = new Date(`January 1, ${nextYear} 00:00:00`);
+        const diffTime = Math.abs(newYearDate - now);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        addBotMessage("Calendar", `📅 There are **${diffDays} days** left until New Year ${nextYear}!`, "Exact Match", input);
+        return true;
+    }
+
+    // 5. Weather Questions
+    if (/\b(weather|temperature|forecast|temp|rainy|sunny|windy|humidity)\b/.test(lower)) {
+        // Try to extract city name
+        let cityMatched = null;
+
+        // Match phrases like "weather in Delhi", "temperature of London", "forecast for Tokyo"
+        const inMatch = lower.match(/\b(?:weather|temperature|forecast|temp|rainy|sunny|windy|humidity)(?:\s+in|\s+for|\s+of)?\s+([a-zA-Z\s]+)/i);
+        if (inMatch && inMatch[1]) {
+            const candidate = inMatch[1].trim();
+            // remove trailing keywords that might be part of the user query but not city name
+            cityMatched = candidate.replace(/\b(today|tomorrow|now|this week|right now)\b/gi, '').trim();
+        }
+
+        if (!cityMatched) {
+            // Check if they typed a single city name next to weather keywords
+            const words = lower.split(/\s+/);
+            const wIndex = words.findIndex(w => ["weather", "temperature", "forecast", "temp"].includes(w));
+            if (wIndex !== -1) {
+                const otherWords = words.filter(w => !["weather", "temperature", "forecast", "temp", "what", "is", "the", "in", "for", "of", "today", "now"].includes(w));
+                if (otherWords.length > 0) {
+                    cityMatched = otherWords[0];
+                }
+            }
+        }
+
+        // If no city found, ask user to name one
+        if (!cityMatched) {
+            addBotMessage("Weather", "🌤️ Which city would you like to know the weather for? Ask me like: *'weather in Delhi'* or *'temperature in London'*.", "Prompt", input);
+            return true;
+        }
+
+        try {
+            // Fetch geo coordinates using Open-Meteo geocoding API (free, CORS-enabled, no key needed)
+            const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityMatched)}&count=1&language=en&format=json`;
+            const geoRes = await fetch(geoUrl);
+            const geoData = await geoRes.json();
+
+            if (!geoData.results || geoData.results.length === 0) {
+                addBotMessage("Weather", `🌤️ I couldn't find a city named **"${cityMatched}"**. Please check the spelling.`, "Warning", input);
+                return true;
+            }
+
+            const location = geoData.results[0];
+            const { name, country, latitude, longitude, admin1 } = location;
+            const locationStr = admin1 ? `${name}, ${admin1}, ${country}` : `${name}, ${country}`;
+
+            // Fetch current weather using Open-Meteo Forecast API
+            const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m`;
+            const weatherRes = await fetch(weatherUrl);
+            const weatherData = await weatherRes.json();
+
+            if (!weatherData.current_weather) {
+                addBotMessage("Weather", `🌤️ Could not fetch weather data for **${locationStr}**.`, "Error", input);
+                return true;
+            }
+
+            const curr = weatherData.current_weather;
+            const temp = curr.temperature;
+            const wCode = curr.weathercode;
+            const wind = curr.windspeed;
+
+            // Map WMO weather codes (0-99) to description + emoji
+            const weatherMap = {
+                0: { desc: "Clear sky", emoji: "☀️" },
+                1: { desc: "Mainly clear", emoji: "🌤️" },
+                2: { desc: "Partly cloudy", emoji: "⛅" },
+                3: { desc: "Overcast", emoji: "☁️" },
+                45: { desc: "Foggy", emoji: "🌫️" },
+                48: { desc: "Depositing rime fog", emoji: "🌫️" },
+                51: { desc: "Light drizzle", emoji: "🌧️" },
+                53: { desc: "Moderate drizzle", emoji: "🌧️" },
+                55: { desc: "Dense drizzle", emoji: "🌧️" },
+                56: { desc: "Light freezing drizzle", emoji: "🌧️" },
+                57: { desc: "Dense freezing drizzle", emoji: "🌧️" },
+                61: { desc: "Slight rain", emoji: "🌧️" },
+                63: { desc: "Moderate rain", emoji: "🌧️" },
+                65: { desc: "Heavy rain", emoji: "🌧️" },
+                66: { desc: "Light freezing rain", emoji: "🌧️" },
+                67: { desc: "Heavy freezing rain", emoji: "🌧️" },
+                71: { desc: "Slight snow fall", emoji: "❄️" },
+                73: { desc: "Moderate snow fall", emoji: "❄️" },
+                75: { desc: "Heavy snow fall", emoji: "❄️" },
+                77: { desc: "Snow grains", emoji: "❄️" },
+                80: { desc: "Slight rain showers", emoji: "狠🌦️" },
+                81: { desc: "Moderate rain showers", emoji: "🌦️" },
+                82: { desc: "Violent rain showers", emoji: "🌦️" },
+                85: { desc: "Slight snow showers", emoji: "❄️" },
+                86: { desc: "Heavy snow showers", emoji: "❄️" },
+                95: { desc: "Thunderstorm", emoji: "⛈️" },
+                96: { desc: "Thunderstorm with slight hail", emoji: "⛈️" },
+                99: { desc: "Thunderstorm with heavy hail", emoji: "⛈️" }
+            };
+
+            const wStatus = weatherMap[wCode] || { desc: "Unknown weather conditions", emoji: "🌡️" };
+
+            // Find current humidity from hourly data if possible
+            let humidityStr = "";
+            if (weatherData.hourly && weatherData.hourly.relativehumidity_2m) {
+                const nowHour = new Date().getHours();
+                const humidity = weatherData.hourly.relativehumidity_2m[nowHour] || weatherData.hourly.relativehumidity_2m[0];
+                if (humidity !== undefined) {
+                    humidityStr = `\n• **Humidity**: ${humidity}%`;
+                }
+            }
+
+            const response = `${wStatus.emoji} **Current Weather in ${locationStr}**:\n• **Temperature**: ${temp}°C\n• **Condition**: ${wStatus.desc}\n• **Wind Speed**: ${wind} km/h${humidityStr}`;
+            addBotMessage("Weather", response, "Live Fetch", input);
+            return true;
+
+        } catch (err) {
+            console.error(err);
+
+            // Fallback list of major cities if geocoding or API fails (e.g., offline)
+            const fallbackWeather = {
+                "delhi": { name: "Delhi", temp: "33°C", cond: "Warm & Dry ☀️", wind: "12 km/h" },
+                "london": { name: "London", temp: "16°C", cond: "Overcast ☁️", wind: "18 km/h" },
+                "new york": { name: "New York", temp: "22°C", cond: "Partly Cloudy ⛅", wind: "14 km/h" },
+                "tokyo": { name: "Tokyo", temp: "26°C", cond: "Clear Sky ☀️", wind: "10 km/h" }
+            };
+
+            const normalizedCity = cityMatched.toLowerCase();
+            if (fallbackWeather[normalizedCity]) {
+                const f = fallbackWeather[normalizedCity];
+                addBotMessage("Weather", `🌡️ **Weather in ${f.name} (Cached)**:\n• **Temperature**: ${f.temp}\n• **Condition**: ${f.cond}\n• **Wind Speed**: ${f.wind}`, "Simulated", input);
+            } else {
+                addBotMessage("Weather", `🌤️ Sorry, I encountered an error checking weather for **"${cityMatched}"** (you might be offline).`, "Error", input);
+            }
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // ============================================================
